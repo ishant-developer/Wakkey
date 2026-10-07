@@ -51,7 +51,10 @@ class _AlarmRingingScreenState extends State<AlarmRingingScreen>
     alarmService.dismissAlarm();
 
     if (mounted) {
-      Navigator.of(context).pushReplacement(
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const MotivationScreen()),
       );
     }
@@ -98,7 +101,9 @@ class _AlarmRingingScreenState extends State<AlarmRingingScreen>
     final alarmService = AlarmService();
     final success = await alarmService.snoozeAlarm();
     if (success && mounted) {
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
   }
 

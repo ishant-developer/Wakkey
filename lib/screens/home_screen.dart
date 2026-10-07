@@ -24,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentTab = 0;
   StreamSubscription<AlarmModel>? _alarmSub;
   StreamSubscription<AlarmModel>? _wakeCheckSub;
+  bool _hasOverlayPermission = true;
+  bool _isNavigatingToRinging = false;
 
   @override
   void initState() {
@@ -31,14 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final alarmService = Provider.of<AlarmService>(context, listen: false);
 
     _alarmSub = alarmService.onAlarmTrigger.listen((alarm) {
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => AlarmRingingScreen(alarm: alarm),
-            fullscreenDialog: true,
-          ),
-        );
-      }
+      _showRingingScreen(alarm);
     });
 
     _wakeCheckSub = alarmService.onWakeUpCheckTrigger.listen((alarm) {
@@ -51,6 +46,47 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkRingingAlarm();
+      _checkPermissions();
+    });
+  }
+
+  void _checkRingingAlarm() {
+    if (!mounted) return;
+    final alarmService = Provider.of<AlarmService>(context, listen: false);
+    if (alarmService.isRinging && alarmService.ringingAlarm != null) {
+      _showRingingScreen(alarmService.ringingAlarm!);
+    } else if (alarmService.isWakeUpCheckRinging && alarmService.activeWakeUpCheckAlarm != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => WakeUpCheckScreen(onAwakeConfirmed: () {}),
+          fullscreenDialog: true,
+        ),
+      );
+    }
+  }
+
+  void _showRingingScreen(AlarmModel alarm) {
+    if (!mounted || _isNavigatingToRinging) return;
+    _isNavigatingToRinging = true;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AlarmRingingScreen(alarm: alarm),
+        fullscreenDialog: true,
+      ),
+    ).then((_) {
+      _isNavigatingToRinging = false;
+    });
+  }
+
+  Future<void> _checkPermissions() async {
+    final alarmService = Provider.of<AlarmService>(context, listen: false);
+    final hasOverlay = await alarmService.checkOverlayPermission();
+    if (mounted) {
+      setState(() => _hasOverlayPermission = hasOverlay);
+    }
   }
 
   @override
@@ -165,7 +201,60 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
+
+          // Lock Screen & Overlay Permission Banner
+          if (!_hasOverlayPermission) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E283D),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF3B82F6).withAlpha(150)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.screen_lock_portrait_rounded, color: Color(0xFF60A5FA), size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Show Alarm on Lock Screen',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Allow Wakkey to show missions over your lock screen when alarms ring.',
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final service = Provider.of<AlarmService>(context, listen: false);
+                      await service.requestOverlayPermission();
+                      await service.requestFullScreenIntentPermission();
+                      _checkPermissions();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('ALLOW', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // Today's Mission Banner Card (matching Screen 2)
           GestureDetector(

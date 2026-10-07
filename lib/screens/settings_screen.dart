@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/alarm_service.dart';
 import '../theme/app_theme.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -126,9 +128,16 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _buildDivider(),
                 _buildSettingTile(
+                  icon: Icons.screen_lock_portrait_rounded,
+                  title: 'Lock Screen & Permissions',
+                  trailingText: 'Configure',
+                  onTap: () => _showPermissionsSheet(context),
+                ),
+                _buildDivider(),
+                _buildSettingTile(
                   icon: Icons.help_outline_rounded,
                   title: 'Help & Support',
-                  onTap: () {},
+                  onTap: () => _showPermissionsSheet(context),
                 ),
                 _buildDivider(),
                 _buildSettingTile(
@@ -219,5 +228,112 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildDivider() {
     return const Divider(height: 1, indent: 54, color: Color(0xFF262C36));
+  }
+
+  void _showPermissionsSheet(BuildContext context) {
+    final alarmService = Provider.of<AlarmService>(context, listen: false);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Lock Screen & Alarm Reliability',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Ensure these settings are enabled so Wakkey displays missions over your lock screen and rings reliably:',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.screen_lock_portrait_rounded, color: Color(0xFF60A5FA), size: 24),
+                  ),
+                  title: const Text('Display Over Other Apps', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  subtitle: const Text('Required to show missions over lock screen', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  trailing: ElevatedButton(
+                    onPressed: () => alarmService.requestOverlayPermission(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: Size.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('ENABLE'),
+                  ),
+                ),
+                const Divider(color: Color(0xFF262C36)),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.fullscreen_rounded, color: Color(0xFF60A5FA), size: 24),
+                  ),
+                  title: const Text('Full Screen Alarms (Android 14+)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  subtitle: const Text('Allows alarm to turn on display immediately', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  trailing: ElevatedButton(
+                    onPressed: () => alarmService.requestFullScreenIntentPermission(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: Size.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('CHECK'),
+                  ),
+                ),
+                const Divider(color: Color(0xFF262C36)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    '💡 Xiaomi / Samsung / OnePlus Tip: In your phone settings > Wakkey > Battery, select "No Restrictions / Unrestricted". On Xiaomi / MIUI, also enable "Show on Lock screen" in Other Permissions.',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.4),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }

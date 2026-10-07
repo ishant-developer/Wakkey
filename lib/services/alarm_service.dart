@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:alarm/alarm.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alarm_model.dart';
 
@@ -8,6 +9,9 @@ class AlarmService extends ChangeNotifier {
   static final AlarmService _instance = AlarmService._internal();
   factory AlarmService() => _instance;
   AlarmService._internal();
+
+  static const MethodChannel _nativeChannel =
+      MethodChannel('com.wakkey.wakkey/alarm_overlay');
 
   List<AlarmModel> _alarms = [];
   List<AlarmModel> get alarms => List.unmodifiable(_alarms);
@@ -19,6 +23,8 @@ class AlarmService extends ChangeNotifier {
   // Wake-up check state
   AlarmModel? _activeWakeUpCheckAlarm;
   AlarmModel? get activeWakeUpCheckAlarm => _activeWakeUpCheckAlarm;
+  bool _isWakeUpCheckRinging = false;
+  bool get isWakeUpCheckRinging => _isWakeUpCheckRinging;
   DateTime? _wakeUpCheckDeadline;
   DateTime? get wakeUpCheckDeadline => _wakeUpCheckDeadline;
   Timer? _wakeUpCheckTimer;
@@ -32,6 +38,57 @@ class AlarmService extends ChangeNotifier {
   final StreamController<AlarmModel> _wakeUpCheckTriggerStream =
       StreamController<AlarmModel>.broadcast();
   Stream<AlarmModel> get onWakeUpCheckTrigger => _wakeUpCheckTriggerStream.stream;
+
+  // Native overlay & wake controls
+  Future<void> wakeScreenNative() async {
+    try {
+      await _nativeChannel.invokeMethod('wakeScreen');
+    } catch (e) {
+      debugPrint('wakeScreenNative error: $e');
+    }
+  }
+
+  Future<void> bringToForegroundNative() async {
+    try {
+      await _nativeChannel.invokeMethod('bringToForeground');
+    } catch (e) {
+      debugPrint('bringToForegroundNative error: $e');
+    }
+  }
+
+  Future<bool> checkOverlayPermission() async {
+    try {
+      final res = await _nativeChannel.invokeMethod<bool>('checkOverlayPermission');
+      return res ?? true;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  Future<void> requestOverlayPermission() async {
+    try {
+      await _nativeChannel.invokeMethod('requestOverlayPermission');
+    } catch (e) {
+      debugPrint('requestOverlayPermission error: $e');
+    }
+  }
+
+  Future<bool> canUseFullScreenIntent() async {
+    try {
+      final res = await _nativeChannel.invokeMethod<bool>('canUseFullScreenIntent');
+      return res ?? true;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  Future<void> requestFullScreenIntentPermission() async {
+    try {
+      await _nativeChannel.invokeMethod('requestFullScreenIntentPermission');
+    } catch (e) {
+      debugPrint('requestFullScreenIntentPermission error: $e');
+    }
+  }
 
   int _getNumericId(String id) {
     final hash = id.hashCode & 0x7FFFFFFF;
@@ -85,9 +142,23 @@ class AlarmService extends ChangeNotifier {
 
     // Reschedule all enabled alarms with native AlarmManager
     await _scheduleAllEnabledAlarms();
+
+    // 4. Check if any alarm is already actively ringing at launch
+    try {
+      for (final alarmSettings in Alarm.ringing.value.alarms) {
+        _handleNativeAlarmRang(alarmSettings);
+      }
+    } catch (e) {
+      debugPrint('Check initial ringing error: $e');
+    }
   }
 
   void _handleNativeAlarmRang(AlarmSettings alarmSettings) {
+    debugPrint('Native alarm rang detected for ID: ${alarmSettings.id}');
+    // Physically wake screen and request overlay / foreground on Android
+    wakeScreenNative();
+    bringToForegroundNative();
+
     // Find matching alarm model
     AlarmModel? matchedAlarm;
     bool isWakeUpCheck = false;
@@ -104,16 +175,31 @@ class AlarmService extends ChangeNotifier {
       }
     }
 
-    if (matchedAlarm != null) {
-      if (isWakeUpCheck) {
-        _activeWakeUpCheckAlarm = matchedAlarm;
-        _wakeUpCheckTriggerStream.add(matchedAlarm);
-        notifyListeners();
-      } else {
-        _ringingAlarm = matchedAlarm;
-        _alarmTriggerStream.add(matchedAlarm);
-        notifyListeners();
-      }
+    // Fallback if ID was not in cache: create or pick enabled alarm
+    matchedAlarm ??= _alarms.firstWhere(
+      (a) => a.isEnabled,
+      orElse: () => _alarms.isNotEmpty
+          ? _alarms.first
+          : AlarmModel(
+              id: 'alarm_${alarmSettings.id}',
+              hour: alarmSettings.dateTime.hour,
+              minute: alarmSettings.dateTime.minute,
+              repeatDays: [],
+              label: alarmSettings.notificationSettings.title,
+              missionType: MissionType.math,
+              soundPath: alarmSettings.assetAudioPath ?? 'assets/audio/loud_siren.wav',
+            ),
+    );
+
+    if (isWakeUpCheck) {
+      _activeWakeUpCheckAlarm = matchedAlarm;
+      _isWakeUpCheckRinging = true;
+      _wakeUpCheckTriggerStream.add(matchedAlarm);
+      notifyListeners();
+    } else {
+      _ringingAlarm = matchedAlarm;
+      _alarmTriggerStream.add(matchedAlarm);
+      notifyListeners();
     }
   }
 
@@ -379,6 +465,7 @@ class AlarmService extends ChangeNotifier {
     _wakeUpCheckTimer?.cancel();
     _activeWakeUpCheckAlarm = null;
     _wakeUpCheckDeadline = null;
+    _isWakeUpCheckRinging = false;
     notifyListeners();
   }
 

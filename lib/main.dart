@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/alarm_ringing_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/wake_up_check_screen.dart';
 import 'services/alarm_service.dart';
 import 'services/sleep_sound_service.dart';
 import 'theme/app_theme.dart';
@@ -40,16 +42,30 @@ void main() async {
 
 class WakkeyApp extends StatelessWidget {
   final bool showOnboarding;
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   const WakkeyApp({super.key, this.showOnboarding = false});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sleep If U Can',
+      navigatorKey: navigatorKey,
+      title: 'Wakkey',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: showOnboarding ? const OnboardingScreen() : const HomeScreen(),
+      home: Consumer<AlarmService>(
+        builder: (context, alarmService, _) {
+          // If alarm is actively ringing, immediately render the ringing & mission puzzle screen
+          if (alarmService.isRinging && alarmService.ringingAlarm != null) {
+            return AlarmRingingScreen(alarm: alarmService.ringingAlarm!);
+          }
+          // If wake-up check is sounding
+          if (alarmService.isWakeUpCheckRinging && alarmService.activeWakeUpCheckAlarm != null) {
+            return WakeUpCheckScreen(onAwakeConfirmed: () {});
+          }
+          return showOnboarding ? const OnboardingScreen() : const HomeScreen();
+        },
+      ),
     );
   }
 }
